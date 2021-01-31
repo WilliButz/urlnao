@@ -1,0 +1,23 @@
+[package]
+name = "urlnao"
+version = "0.1.0"
+authors = ["WilliButz <willibutz@posteo.de>"]
+edition = "2018"
+
+[dependencies]
+bytes = "1.0"
+clap = "2.33"
+futures = { version = "0.3", default-features = false, features = ["alloc"] }
+futures-core = "0.3"
+futures-util = { version = "0.3", default-features = false }
+http = "0.2"
+mime = "0.3.16"
+mpart-async = "0.5"
+rand = "0.8"
+sha2 = "0.9"
+signal-hook = "0.3"
+sled = "0.34"
+tokio = { version = "1", features = ["macros","net","rt-multi-thread"] }
+tokio-stream = { version = "0.1", features = ["net"] }
+uuid = { version = "0.8", default-features = false, features = ["v4"] }
+warp = "0.3"

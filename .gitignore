@@ -1,0 +1,9 @@
+*.swo
+*.swp
+*.sock
+result
+result-*
+/db
+/target
+/tmp
+/uploads

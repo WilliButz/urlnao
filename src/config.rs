@@ -84,6 +84,15 @@ impl Config {
                 self.protocol, self.hostname, self.port, self.shortid_path, suffix),
         }
     }
+
+    pub fn print(&self) {
+        println!("placing socket at: {}", self.socket_path);
+        println!("using key-value store: {}", self.db_path);
+        println!("upload endpoint is /up");
+        println!("generating shareable URLs with format: {}",
+            self.prepend_url(SuffixType::ShortID, "<short-id>"));
+        println!("generating download URLs with format: {}",
+            self.prepend_url(SuffixType::FileName, "<orignal-filename>"));
     }
 }
 

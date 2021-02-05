@@ -23,7 +23,7 @@ use warp::http::{Response,StatusCode};
 #[tokio::main]
 async fn main() {
     let config = Config::init();
-    println!("config: {}\nurl prefix: {}", config, config.get_url_prefix());
+    config.print();
 
     let db = match db::open(config.db_path.clone()).await {
         Ok(db) => db,

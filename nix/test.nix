@@ -47,7 +47,7 @@ in
       with subtest("upload and download"):
           client.succeed("head -c 235 /dev/urandom > testfile.bin")
           client.succeed("curl -sSf -F file=@testfile.bin http://server/up > url")
-          client.succeed("xargs <url curl -sv --output download.bin >&2")
+          client.succeed("xargs <url curl -L -sv --output download.bin >&2")
           client.succeed("cmp testfile.bin download.bin")
     '';
   })

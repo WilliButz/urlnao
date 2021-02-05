@@ -2,7 +2,7 @@ mod config;
 mod db;
 mod file;
 
-use config::Config;
+use config::{Config, SuffixType};
 
 use std::io::prelude::*;
 use std::fs::{File, OpenOptions};
@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use futures_core::{Future, Stream};
 use futures_util::TryStreamExt;
+use hyper::body::Body;
 use mime::Mime;
 use mpart_async::server::MultipartStream;
 use tokio_stream::wrappers::UnixListenerStream;
@@ -61,20 +62,38 @@ async fn main() {
                 .body("Payload too large\n")
         });
 
-    let download = warp::get()
+    let db_id = db.clone();
+    let config_id = config.clone();
+    let download_id = warp::get()
         .and(warp::path("f"))
         .and(warp::path::param())
         .and_then(move |id| {
-            construct_response_for_id(id, db.clone())
+            construct_response_for_id(id, config_id.clone(), db_id.clone())
         });
 
-    let reject = warp::any().map(|| {
-        Response::builder()
-            .status(StatusCode::BAD_REQUEST)
-            .body("Bad Request\n")
-    });
 
-    let routes = upload.or(too_large).or(download).or(reject);
+    let db_orig = db.clone();
+    let download_orig = warp::get()
+        .and(warp::path("d"))
+        .and(warp::path::param())
+        .and(warp::path::end())
+        .and_then(move |filename| {
+            construct_response_for_filename(filename, db_orig.clone())
+        });
+
+    let reject = warp::any()
+        .map(|| {
+            Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body("Bad Request\n")
+        });
+
+    let routes = landing_page
+        .or(download_id)
+        .or(download_orig)
+        .or(upload)
+        .or(too_large)
+        .or(reject);
 
     let incoming = UnixListenerStream::new(listener);
 
@@ -115,9 +134,31 @@ fn new_random_uuid() -> String {
 
 async fn construct_response_for_id(
     short_id: String,
+    config: Config,
+    db: sled::Db
+) -> Result<http::Response<Body>, Rejection> {
+    let (_, orig) = match db::try_get_sha_and_orig(db, short_id.as_bytes()).await {
+        Ok(t)  => t,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            return Err(warp::reject::not_found());
+        },
+    };
+    let response = match Response::builder()
+                    .status(StatusCode::MOVED_PERMANENTLY)
+                    .header("Location", config.prepend_url(SuffixType::FileName, &orig))
+                    .body(Body::empty()) {
+        Ok(r) => r,
+        Err(_) => return Err(warp::reject::not_found()),
+    };
+    Ok(response)
+}
+
+async fn construct_response_for_filename(
+    filename: String,
     db: sled::Db
 ) -> Result<http::Response<Vec<u8>>, Rejection> {
-    let (sha256, orig) = match db::try_get_sha_and_orig(db, short_id.as_bytes()).await {
+    let sha256 = match db::try_get_sha_for_orig(db, filename.as_bytes()).await {
         Ok(t)  => t,
         Err(e) => {
             eprintln!("Error: {}", e);
@@ -132,13 +173,13 @@ async fn construct_response_for_id(
         },
     };
 
-    let split = &orig.split(".").collect::<Vec<&str>>();
+    let split = &filename.split(".").collect::<Vec<&str>>();
     let ext = split.last();
     let content_type = match *ext.unwrap() {
         "bmp"  => "image/bmp",
         "gif"  => "image/gif",
         "jpeg" |
-        "jpg" => "image/jpeg",
+        "jpg"  => "image/jpeg",
         "json" => "application/json",
         "mp3"  => "audio/mpeg",
         "mp4"  => "video/mp4",
@@ -155,7 +196,7 @@ async fn construct_response_for_id(
         "application/json" |
         "application/octet-stream" |
         "application/pdf" => {
-            format!("attachment; filename={}", orig)
+            format!("attachment; filename={}", filename)
         },
         _ => "inline".to_string(),
     };
@@ -212,7 +253,7 @@ async fn create_upload_tasks(
                 Ok(s) => s,
                 Err(_) => return None,
             };
-            if let Err(e) = db::try_add_sha_to_orig(db, &sha256, &orig_name).await {
+            if let Err(e) = db::try_add_sha_orig(db, &sha256, &orig_name).await {
                 eprintln!("Error: {}", e);
                 return None;
             }
@@ -285,7 +326,7 @@ async fn handle_upload(
     let mut response = vec![];
     for url in maybe_urls {
         match url {
-            Some(short_id) => response.push(format!("{}/{}", config.get_url_prefix(), short_id)),
+            Some(short_id) => response.push(config.prepend_url(SuffixType::ShortID, &short_id)),
             None => response.push(String::from("upload failed")),
         }
     }

@@ -9,6 +9,12 @@ use sled::{
 use std::str::from_utf8;
 use std::sync::Arc;
 
+pub struct Upload {
+    pub id:        String,
+    pub checksum:  String,
+    pub orig_name: Option<String>,
+}
+
 pub async fn open(db_path: Arc<str>) -> Result<sled::Db, ()> {
     match sled::open(db_path.to_string()) {
         Err(_) => return Err(()),
@@ -47,12 +53,30 @@ pub async fn try_get_sha_and_orig(
 
     Ok((sha256.to_owned(), orig.to_owned()))
 }
+pub async fn try_get_sha_for_orig(
+    db: sled::Db,
+    filename: &[u8]
+) -> Result<String, &'static str> {
+    let orig_to_sha = db.open_tree(b"orig_to_sha").expect("failed to open");
+    let sha256_ivec = match orig_to_sha.get(filename) {
+        Ok(Some(s)) => s,
+        _ => return Err("unknown filename"),
+    };
+    match std::str::from_utf8(sha256_ivec.as_ref()) {
+        Ok(sha256) => return Ok(String::from(sha256)),
+        Err(_) => return Err("failed to convert db value to string"),
+    }
+}
 
-pub async fn try_add_sha_to_orig(db: sled::Db, sha256: &str, orig: &str) -> Result<(), &'static str> {
+pub async fn try_add_sha_orig(db: sled::Db, sha256: &str, orig: &str) -> Result<(), &'static str> {
     let sha_to_orig = db.open_tree(b"sha_to_orig").expect("failed to open");
+    let orig_to_sha = db.open_tree(b"orig_to_sha").expect("failed to open");
     println!("adding {} with orig name {}", sha256, orig);
     if let Err(_) = sha_to_orig.insert(sha256.as_bytes(), orig.as_bytes()) {
         return Err("failed to add sha->orig mapping");
+    }
+    if let Err(_) = orig_to_sha.insert(orig.as_bytes(), sha256.as_bytes()) {
+        return Err("failed to add orig->sha mapping");
     }
     Ok(())
 }

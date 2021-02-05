@@ -1356,6 +1356,7 @@ dependencies = [
  "futures-core",
  "futures-util",
  "http",
+ "hyper",
  "mime",
  "mpart-async",
  "rand 0.8.2",

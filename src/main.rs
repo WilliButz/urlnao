@@ -74,6 +74,15 @@ async fn main() {
             construct_response_for_id(id, config_id.clone(), db_id.clone())
         });
 
+    let config_state = config.clone();
+    let db_state = db.clone();
+    let state = warp::get()
+        .and(warp::path("state"))
+        .and(warp::path::end())
+        .and_then(move || {
+            construct_state_response(config_state.clone(), db_state.clone())
+        });
+
 
     let db_orig = db.clone();
     let download_orig = warp::get()
@@ -105,6 +114,7 @@ async fn main() {
         .or(download_orig)
         .or(upload)
         .or(too_large)
+        .or(state)
         .or(reject);
 
     let incoming = UnixListenerStream::new(listener);
@@ -142,6 +152,51 @@ fn append_temp_suffix(s: &str) -> String {
 
 fn new_random_uuid() -> String {
     Uuid::new_v4().to_string()
+}
+
+async fn construct_state_response(
+    config: Config,
+    db: sled::Db
+) -> Result<http::Response<String>, Rejection> {
+    let mut response = vec![];
+
+    response.push("<!doctype html>\n\
+                   <head>\n\
+                     <meta charset=\"utf-8\">\n\
+                     <title>Urlnao</title>\n\
+                   </head>\n\
+                   <body>".to_owned());
+
+    let entries = match db::get_all_ids_and_names(db).await {
+        Ok(e) => e,
+        Err(_) => return Err(warp::reject::not_found()),
+    };
+
+    response.push(format!("<p>Urlnao currently has {} upload(s):</p>\n<ul>", entries.len()));
+
+    for upload in entries {
+        match upload.orig_name {
+            Some(orig_name) => response.push(format!(
+                    "<pre><li><a href=\"{}\">checksum: {} (filename: {})</a></li></pre>",
+                    config.prepend_url(SuffixType::ShortID, &upload.id),
+                    upload.checksum,
+                    orig_name)),
+            None => response.push(format!(
+                    "<pre><li><a href=\"{}\">checksum: {} (no filename)</a></li></pre>",
+                    config.prepend_url(SuffixType::ShortID, &upload.id),
+                    upload.checksum)),
+        }
+    }
+
+    response.push("</ul>\n</body>\n".to_owned());
+
+    match Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "text/html")
+        .body(response.join("\n")) {
+            Err(_) => Err(warp::reject::not_found()),
+            Ok(response) => Ok(response),
+    }
 }
 
 async fn construct_response_for_id(

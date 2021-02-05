@@ -22,6 +22,84 @@ pub async fn open(db_path: Arc<str>) -> Result<sled::Db, ()> {
     }
 }
 
+pub async fn get_all_ids_and_names(
+    db: sled::Db,
+) -> Result<Vec<Upload>, &'static str> {
+    let mut entries = vec![];
+
+    let id_to_sha   = match db.open_tree(b"id_to_sha") {
+        Ok(tree) => tree,
+        Err(_) => return Err("failed to open id->sha mapping"),
+    };
+    let sha_to_orig = match db.open_tree(b"sha_to_orig") {
+        Ok(tree) => tree,
+        Err(_) => return Err("failed to open sha->orig mapping"),
+    };
+
+    for tuple in id_to_sha.iter() {
+        let (id_ivec, sha_ivec) = match tuple {
+            Err(_) => {
+                eprintln!("unexpected error while iterating over db entries");
+                continue
+            },
+            Ok((i, s)) => (i,s),
+        };
+
+        let id = match from_utf8(&id_ivec) {
+            Ok(s) => s,
+            _ => {
+                eprintln!("failed to convert ivec to utf8 string");
+                continue
+            },
+        };
+
+        let sha = match from_utf8(&sha_ivec) {
+            Ok(s) => s,
+            _ => {
+                eprintln!("failed to convert ivec to utf8 string");
+                continue
+            },
+        };
+
+        let orig_ivec = match sha_to_orig.get(&sha_ivec) {
+            Ok(Some(o)) => o,
+            Ok(None) => {
+                entries.push(Upload {
+                    id: id.to_owned(),
+                    checksum: sha.to_owned(),
+                    orig_name: None,
+                });
+                continue
+            },
+            Err(_) => {
+                eprintln!("unexpected error looking up original filename for id {}", id);
+                entries.push(Upload {
+                    id: id.to_owned(),
+                    checksum: sha.to_owned(),
+                    orig_name: None,
+                });
+                continue
+            }
+        };
+
+        let orig = match from_utf8(&orig_ivec) {
+            Ok(s) => s,
+            _ => {
+                eprintln!("failed to convert ivec to utf8 string");
+                continue
+            },
+        };
+
+        entries.push(Upload {
+            id: id.to_owned(),
+            checksum: sha.to_owned(),
+            orig_name: Some(orig.to_owned()),
+        });
+    }
+
+    Ok(entries)
+}
+
 pub async fn try_get_sha_and_orig(
     db: sled::Db,
     short_id: &[u8]

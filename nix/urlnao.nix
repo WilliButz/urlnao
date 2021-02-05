@@ -6,13 +6,13 @@
 
 rustPlatform.buildRustPackage rec {
   pname = "urlnao";
-  version = "0.1.0";
+  version = "0.2.0";
 
   src = fetchFromGitHub {
     owner = "WilliButz";
     repo = pname;
     rev = "v${version}";
-    sha256 = "10hgiir7rfzkn5hcl4n5hk3d2z2cyq3z08r2ml61brccfr7qd88q";
+    sha256 = "023spdwp1fywfldgg4mm1cjy60yhqdgnvmpykr0myzy7vgw7ll7b";
   };
 
   cargoSha256 = "0dm49zca118bkjd1i0xs7inrfi0iwkgxpjbz742fxrgw671z47hn";

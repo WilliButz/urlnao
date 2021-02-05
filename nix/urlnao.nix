@@ -15,7 +15,7 @@ rustPlatform.buildRustPackage rec {
     sha256 = "10hgiir7rfzkn5hcl4n5hk3d2z2cyq3z08r2ml61brccfr7qd88q";
   };
 
-  cargoSha256 = "0bn7lnnxhl0macamnv84ikjv81ac27z89m1mfzpzzldp94iw93qj";
+  cargoSha256 = "0dm49zca118bkjd1i0xs7inrfi0iwkgxpjbz742fxrgw671z47hn";
 
   meta = with lib; {
     description = "Upload service for file sharing with weechat-android";

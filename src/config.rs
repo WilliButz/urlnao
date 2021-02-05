@@ -27,7 +27,7 @@ impl std::fmt::Display for Config {
 impl Config {
     pub fn init() -> Self {
         let matches = App::new("urlnao")
-            .version("0.1.0")
+            .version("0.2.0")
             .about("Upload service for file sharing with weechat-android")
             .arg(Arg::with_name("socket_path")
                 .short("s")

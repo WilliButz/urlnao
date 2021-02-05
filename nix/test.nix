@@ -41,7 +41,7 @@ in
           client.succeed("ping -c1 server")
           client.succeed("nc -zv server 80")
           client.succeed(
-              '[ "400" -eq "$(curl -so /dev/null -w "%{response_code}" http://server/)" ]'
+              '[ "200" -eq "$(curl -so /dev/null -w "%{response_code}" http://server/)" ]'
           )
 
       with subtest("upload and download"):

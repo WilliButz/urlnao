@@ -43,7 +43,8 @@ async fn main() {
 
     let db_up = db.clone();
     let config_up = config.clone();
-    let upload = warp::path!("up")
+    let upload = warp::path("up")
+        .and(warp::path::end())
         .and(warp::post())
         // limit upload size
         .and(warp::body::content_length_limit(500_000_000))
@@ -53,7 +54,8 @@ async fn main() {
             handle_upload(mime, body, db_up.clone(), config_up.clone())
         });
 
-    let too_large = warp::path!("up")
+    let too_large = warp::path("up")
+        .and(warp::path::end())
         .and(warp::post())
         .and(warp::header::<Mime>("content-type"))
         .map(|_| {
@@ -67,6 +69,7 @@ async fn main() {
     let download_id = warp::get()
         .and(warp::path("f"))
         .and(warp::path::param())
+        .and(warp::path::end())
         .and_then(move |id| {
             construct_response_for_id(id, config_id.clone(), db_id.clone())
         });
@@ -79,6 +82,15 @@ async fn main() {
         .and(warp::path::end())
         .and_then(move |filename| {
             construct_response_for_filename(filename, db_orig.clone())
+        });
+
+    let landing_page = warp::get()
+        .and(warp::path::end())
+        .map(|| {
+            Response::builder()
+                .status(StatusCode::OK)
+                .body("Urlnao - \
+                    Upload service for file sharing with weechat-android\n")
         });
 
     let reject = warp::any()

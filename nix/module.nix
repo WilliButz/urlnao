@@ -61,6 +61,12 @@ in
       virtualHosts.${cfg.hostname} = {
         enableACME = cfg.protocol == "https";
         forceSSL = cfg.protocol == "https";
+        extraConfig = ''
+          add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'" always;
+          add_header X-Frame-Options "DENY" always;
+          add_header X-Content-Type-Options "nosniff" always;
+          add_header X-XSS-Protection "1; mode=block" always;
+        '';
         locations."/".proxyPass = "http://unix:/var/lib/urlnao/urlnao.sock";
       };
     };

@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::fs::{
     File,
     Permissions,
-    rename
 };
 use tokio::net::UnixListener;
 use std::os::unix::fs::PermissionsExt;
@@ -43,9 +42,16 @@ pub async fn get_sha256_of_file<'a>(path: &str) -> Result<String, String> {
     Ok(format!("{:x}", sha256.finalize()))
 }
 
-pub async fn try_move_file(from: &str, to: &str) -> Result<(), &'static str> {
-    match rename(from, format!("uploads/{}", to)) {
-        Ok(_) => Ok(()),
-        _ => Err("failed to move file")
+pub async fn try_move_to_uploads(from: &str, to: &str) -> Result<(), String> {
+    let target = format!("uploads/{}", to);
+
+    if std::fs::metadata(&target).is_ok() {
+        eprintln!("Warning: file {} exists, not overwriting", to);
+        return Ok(());
     }
+
+    std::fs::rename(from, target)
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
 }

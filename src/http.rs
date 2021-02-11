@@ -261,7 +261,7 @@ pub async fn create_upload_tasks(
                     return None;
                 },
             };
-            if let Err(_) = file::try_move_file(&name, &sha256).await {
+            if let Err(_) = file::try_move_to_uploads(&name, &sha256).await {
                 eprintln!("Error: failed to rename file");
                 return None;
             }

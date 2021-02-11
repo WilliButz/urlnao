@@ -35,15 +35,16 @@ pub async fn setup_dirs_get_listener(socket_path: &Arc<str>) -> Result<UnixListe
     Ok(listener)
 }
 
-pub async fn get_sha256_of_file(path: &str) -> Result<String, &'static str> {
-    if let Ok(mut file) = File::open(path) {
-        let mut sha256 = sha2::Sha256::new();
-        return match std::io::copy(&mut file, &mut sha256) {
-            Ok(n) if n > 0 => Ok(format!("{:x}", sha256.finalize())),
-            _ => Err("failed to calculate checksum"),
-        };
-    }
-    Err("failed to open file")
+pub async fn get_sha256_of_file<'a>(path: &str) -> Result<String, String> {
+    let mut file = File::open(path).map_err(|e| e.to_string())?;
+
+    let mut sha256 = sha2::Sha256::new();
+
+    let n = std::io::copy(&mut file, &mut sha256).map_err(|e| e.to_string())?;
+
+    assert!(n > 0); // file should never be empty
+
+    Ok(format!("{:x}", sha256.finalize()))
 }
 
 pub async fn try_move_file(from: &str, to: &str) -> Result<(), &'static str> {

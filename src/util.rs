@@ -3,8 +3,12 @@ use crate::config::Config;
 use uuid::Uuid;
 use std::fs;
 
-pub fn append_temp_suffix(s: &str) -> String {
-    format!("{}.part", s)
+pub fn prepend_tmp_dir(s: &str) -> String {
+    format!("tmp/{}", s)
+}
+
+pub fn prepend_upload_dir(s: &str) -> String {
+    format!("uploads/{}", s)
 }
 
 pub fn new_random_uuid() -> String {

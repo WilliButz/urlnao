@@ -1,10 +1,13 @@
+use crate::util;
+
 use sha2::Digest;
-use std::sync::Arc;
+use tokio::net::UnixListener;
+
 use std::fs::{
     File,
     Permissions,
 };
-use tokio::net::UnixListener;
+use std::sync::Arc;
 use std::os::unix::fs::PermissionsExt;
 
 pub struct FileInfo {
@@ -43,15 +46,17 @@ pub async fn get_sha256_of_file<'a>(path: &str) -> Result<String, String> {
 }
 
 pub async fn try_move_to_uploads(from: &str, to: &str) -> Result<(), String> {
-    let target = format!("uploads/{}", to);
+    let target = util::prepend_upload_dir(to);
 
     if std::fs::metadata(&target).is_ok() {
         eprintln!("Warning: file {} exists, not overwriting", to);
         return Ok(());
     }
 
-    std::fs::rename(from, target)
-        .map_err(|e| e.to_string())?;
+    std::fs::rename(&from, &target)
+        .map_err(|e| {
+            format!("failed to rename file: {}: {} -> {}", e, from, target)
+        })?;
 
     Ok(())
 }

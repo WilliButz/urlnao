@@ -249,7 +249,7 @@ pub async fn create_upload_tasks(
 
     for file_info in new_files {
         let orig_name = file_info.original_filename;
-        let name = file_info.uuid;
+        let name = util::prepend_tmp_dir(&file_info.uuid);
         let db = db.clone();
         tasks.push(futures::future::lazy(|_| async move {
             let checksum = file::get_sha256_of_file(&name);
@@ -261,8 +261,8 @@ pub async fn create_upload_tasks(
                     return None;
                 },
             };
-            if let Err(_) = file::try_move_to_uploads(&name, &sha256).await {
-                eprintln!("Error: failed to rename file");
+            if let Err(e) = file::try_move_to_uploads(&name, &sha256).await {
+                eprintln!("Error: failed to rename file: {}", e);
                 return None;
             }
             let short_id = match db::try_get_new_shortid(db.clone(), &sha256).await {
@@ -318,7 +318,7 @@ pub async fn handle_upload(
             },
         }
 
-        let name = util::append_temp_suffix(&new_files[file_index].uuid);
+        let name = util::prepend_tmp_dir(&new_files[file_index].uuid);
         if let Ok(mut file) = OpenOptions::new()
             .create(true)
             .write(true)

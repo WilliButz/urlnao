@@ -6,6 +6,7 @@ use sled::{
     Transactional,
     transaction::ConflictableTransactionError::Abort
 };
+
 use std::str::from_utf8;
 use std::sync::Arc;
 
@@ -15,80 +16,51 @@ pub struct Upload {
     pub orig_name: Option<String>,
 }
 
-pub async fn open(db_path: Arc<str>) -> Result<sled::Db, ()> {
-    match sled::open(db_path.to_string()) {
-        Err(_) => return Err(()),
-        Ok(db) => Ok(db),
-    }
+pub async fn open(db_path: Arc<str>) -> Result<sled::Db, String> {
+    let db = sled::open(db_path.to_string())
+        .map_err(|e| e.to_string())?;
+
+    Ok(db)
 }
 
 pub async fn get_all_ids_and_names(
     db: sled::Db,
-) -> Result<Vec<Upload>, &'static str> {
+) -> Result<Vec<Upload>, String> {
     let mut entries = vec![];
 
-    let id_to_sha   = match db.open_tree(b"id_to_sha") {
-        Ok(tree) => tree,
-        Err(_) => return Err("failed to open id->sha mapping"),
-    };
-    let sha_to_orig = match db.open_tree(b"sha_to_orig") {
-        Ok(tree) => tree,
-        Err(_) => return Err("failed to open sha->orig mapping"),
-    };
+    let id_to_sha = db.open_tree(b"id_to_sha")
+        .map_err(|e| e.to_string())?;
+
+    let sha_to_orig = db.open_tree(b"sha_to_orig")
+        .map_err(|e| e.to_string())?;
 
     for tuple in id_to_sha.iter() {
-        let (id_ivec, sha_ivec) = match tuple {
-            Err(_) => {
-                eprintln!("unexpected error while iterating over db entries");
-                continue
-            },
-            Ok((i, s)) => (i,s),
+        let (id_ivec, sha_ivec) = tuple
+            .map_err(|e| e.to_string())?;
+
+        let id = from_utf8(&id_ivec)
+            .map_err(|e| e.to_string())?;
+
+        let sha = from_utf8(&sha_ivec)
+            .map_err(|e| e.to_string())?;
+
+        let query_result = sha_to_orig.get(&sha_ivec)
+            .map_err(|e| e.to_string())?;
+
+        let orig_ivec = match query_result {
+           Some(ivec) => ivec,
+           None => {
+               entries.push(Upload {
+                   id: id.to_owned(),
+                   checksum: sha.to_owned(),
+                   orig_name: None,
+               });
+               continue
+           },
         };
 
-        let id = match from_utf8(&id_ivec) {
-            Ok(s) => s,
-            _ => {
-                eprintln!("failed to convert ivec to utf8 string");
-                continue
-            },
-        };
-
-        let sha = match from_utf8(&sha_ivec) {
-            Ok(s) => s,
-            _ => {
-                eprintln!("failed to convert ivec to utf8 string");
-                continue
-            },
-        };
-
-        let orig_ivec = match sha_to_orig.get(&sha_ivec) {
-            Ok(Some(o)) => o,
-            Ok(None) => {
-                entries.push(Upload {
-                    id: id.to_owned(),
-                    checksum: sha.to_owned(),
-                    orig_name: None,
-                });
-                continue
-            },
-            Err(_) => {
-                eprintln!("unexpected error looking up original filename for id {}", id);
-                entries.push(Upload {
-                    id: id.to_owned(),
-                    checksum: sha.to_owned(),
-                    orig_name: None,
-                });
-                continue
-            }
-        };
-
-        let orig = match from_utf8(&orig_ivec) {
-            Ok(s) => s,
-            _ => {
-                eprintln!("failed to convert ivec to utf8 string");
-                continue
-            },
-        };
+        let orig = from_utf8(&orig_ivec)
+            .map_err(|e| e.to_string())?;
 
         entries.push(Upload {
             id: id.to_owned(),
@@ -103,77 +75,106 @@ pub async fn get_all_ids_and_names(
 pub async fn try_get_sha_and_orig(
     db: sled::Db,
     short_id: &[u8]
-) -> Result<(String, String), &'static str> {
-    let id_to_sha   = match db.open_tree(b"id_to_sha") {
-        Ok(tree) => tree,
-        Err(_) => return Err("failed to open id->sha mapping"),
+) -> Result<(String, String), String> {
+    let id_to_sha = db.open_tree(b"id_to_sha")
+        .map_err(|e| e.to_string())?;
+
+    let sha_to_orig = db.open_tree(b"sha_to_orig")
+        .map_err(|e| e.to_string())?;
+
+    let query_result = id_to_sha.get(short_id)
+        .map_err(|e| e.to_string())?;
+
+    let sha256_ivec = match query_result {
+        Some(ivec) => ivec,
+        None => return Err("failed to find checksum in db tree".to_string()),
     };
-    let sha_to_orig = match db.open_tree(b"sha_to_orig") {
-        Ok(tree) => tree,
-        Err(_) => return Err("failed to open sha->orig mapping"),
+
+    let sha256 = from_utf8(&sha256_ivec)
+        .map_err(|e| e.to_string())?;
+
+    let query_result = sha_to_orig.get(&sha256_ivec)
+        .map_err(|e| e.to_string())?;
+
+    let orig_ivec = match query_result {
+        Some(ivec) => ivec,
+        None => return Err("failed to find original filename in db tree".to_string()),
     };
-    let sha256_ivec = match id_to_sha.get(short_id) {
-        Ok(Some(ivec)) => ivec,
-        _ => return Err("failed to get sha256 from db tree"),
-    };
-    let sha256 = match from_utf8(sha256_ivec.as_ref()) {
-        Ok(s) => s,
-        _ => return Err("failed to convert ivec to utf8 string"),
-    };
-    let orig_ivec = match sha_to_orig.get(sha256.as_bytes()) {
-        Ok(Some(ivec)) => ivec,
-        _ => return Err("failed to get original name from db tree"),
-    };
-    let orig = match from_utf8(orig_ivec.as_ref()) {
-        Ok(s) => s,
-        _ => return Err("failed to convert ivec to utf8 string"),
-    };
+
+    let orig = from_utf8(&orig_ivec)
+        .map_err(|e| e.to_string())?;
 
     Ok((sha256.to_owned(), orig.to_owned()))
 }
+
 pub async fn try_get_sha_for_orig(
     db: sled::Db,
     filename: &[u8]
-) -> Result<String, &'static str> {
-    let orig_to_sha = db.open_tree(b"orig_to_sha").expect("failed to open");
-    let sha256_ivec = match orig_to_sha.get(filename) {
-        Ok(Some(s)) => s,
-        _ => return Err("unknown filename"),
+) -> Result<String, String> {
+    let orig_to_sha = db.open_tree(b"orig_to_sha")
+        .map_err(|e| e.to_string())?;
+
+    let query_result = orig_to_sha.get(filename)
+        .map_err(|e| e.to_string())?;
+
+    let sha256_ivec = match query_result {
+        Some(ivec) => ivec,
+        None => return Err("unknown filename".to_string()),
     };
-    match std::str::from_utf8(sha256_ivec.as_ref()) {
-        Ok(sha256) => return Ok(String::from(sha256)),
-        Err(_) => return Err("failed to convert db value to string"),
-    }
+
+    let sha256 = from_utf8(&sha256_ivec)
+        .map_err(|e| e.to_string())?;
+
+    Ok(sha256.to_owned())
 }
 
-pub async fn try_add_sha_orig(db: sled::Db, sha256: &str, orig: &str) -> Result<(), &'static str> {
-    let sha_to_orig = db.open_tree(b"sha_to_orig").expect("failed to open");
-    let orig_to_sha = db.open_tree(b"orig_to_sha").expect("failed to open");
+pub async fn try_add_sha_orig(db: sled::Db, sha256: &str, orig: &str) -> Result<(), String> {
+    let sha_to_orig = db.open_tree(b"sha_to_orig")
+        .map_err(|e| e.to_string())?;
+
+    let orig_to_sha = db.open_tree(b"orig_to_sha")
+        .map_err(|e| e.to_string())?;
+
     println!("adding {} with orig name {}", sha256, orig);
-    if let Err(_) = sha_to_orig.insert(sha256.as_bytes(), orig.as_bytes()) {
-        return Err("failed to add sha->orig mapping");
-    }
-    if let Err(_) = orig_to_sha.insert(orig.as_bytes(), sha256.as_bytes()) {
-        return Err("failed to add orig->sha mapping");
-    }
+
+    (&sha_to_orig, &orig_to_sha)
+        .transaction(|(tx_sha_orig, tx_orig_sha)| {
+            tx_sha_orig.insert(sha256.as_bytes(), orig.as_bytes())?;
+
+            tx_orig_sha.insert(orig.as_bytes(), sha256.as_bytes())?;
+
+            Ok(())
+
+        })
+    .map_err(|e: sled::transaction::TransactionError<&str>| {
+        e.to_string()
+    })?;
+
     Ok(())
 }
 
-pub async fn try_get_new_shortid(db: sled::Db, sha256: &str) -> Result<String, &'static str> {
-    let sha_to_id = db.open_tree(b"sha_to_id").expect("failed to open");
-    let id_to_sha = db.open_tree(b"id_to_sha").expect("failed to open");
+pub async fn try_get_new_shortid(db: sled::Db, sha256: &str) -> Result<String, String> {
+    let sha_to_id = db.open_tree(b"sha_to_id")
+        .map_err(|e| e.to_string())?;
 
-    if let Ok(a) = (&sha_to_id, &id_to_sha)
+    let id_to_sha = db.open_tree(b"id_to_sha")
+        .map_err(|e| e.to_string())?;
+
+    let new_id = (&sha_to_id, &id_to_sha)
         .transaction(|(tx_sha_id, tx_id_sha)| {
             // check if file with same hash is already in db
-            if let Ok(Some(x)) = tx_sha_id.get(sha256.as_bytes()) {
-                // try five times to find an unused short id
-                println!("file exists");
-                match std::str::from_utf8(x.as_ref()) {
-                    Ok(id) => return Ok(String::from(id)),
-                    Err(_) => return Err(Abort("failed to convert db value to string")),
-                }
+            let query_result = tx_sha_id.get(sha256.as_bytes())?;
+
+            if let Some(x) = query_result {
+                let id = from_utf8(&x).map_err(|_| {
+                    Abort("failed to convert query result to string")
+                })?;
+
+                println!("Info: reusing existing ID for duplicate upload: {}", id);
+                return Ok(id.to_string());
             }
+
+            // try five times to find an unused short id
             for _ in 0..5 {
                 // generate a 3 to 8 character long short id
                 let new_id: String = std::iter::repeat(())
@@ -186,21 +187,15 @@ pub async fn try_get_new_shortid(db: sled::Db, sha256: &str) -> Result<String, &
                     continue
                 }
                 // try to insert mapping sha256 -> new_id
-                if let Err(_) = tx_id_sha.insert(new_id.as_bytes(), sha256.as_bytes()) {
-                    println!("failed to insert id->sha mapping");
-                    return Err(Abort("could not insert new id->sha mapping"));
-                }
-                if let Err(_) = tx_sha_id.insert(sha256.as_bytes(), new_id.as_bytes()) {
-                    println!("failed to insert sha->id mapping");
-                    return Err(Abort("could not insert sha->id mapping"));
-                }
+                tx_id_sha.insert(new_id.as_bytes(), sha256.as_bytes())?;
+                tx_sha_id.insert(sha256.as_bytes(), new_id.as_bytes())?;
+
                 return Ok(new_id);
             };
-            println!("failed to find a free short id");
             return Err(Abort("failed to find a free short id"));
-        }) {
-        return Ok(a);
-    }
-    println!("failed to execute transaction");
-    Err("failed to execute transaction")
+        }).map_err(|e: sled::transaction::TransactionError<&str>| {
+          e.to_string()
+      })?;
+
+    Ok(new_id)
 }

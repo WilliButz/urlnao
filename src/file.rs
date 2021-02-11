@@ -14,24 +14,20 @@ pub struct FileInfo {
 }
 
 pub async fn setup_dirs_get_listener(socket_path: &Arc<str>) -> Result<UnixListener, String> {
-    let listener = match UnixListener::bind(socket_path.to_string()) {
-        Ok(listener) => listener,
-        Err(e) => {
-            return Err(format!("failed to bind to socket: {}", e));
-        },
-    };
+    let listener = UnixListener::bind(socket_path.to_string())
+        .map_err(|e| e.to_string())?;
 
     let socket_permissions = Permissions::from_mode(0o660);
-    if let Err(e) = std::fs::set_permissions(socket_path.to_string(), socket_permissions) {
-        return Err(format!("failed to socket permissions: {}", e));
-    }
 
-    if let Err(e) = std::fs::create_dir_all("uploads") {
-        return Err(format!("failed to create directory 'uploads': {}", e));
-    }
-    if let Err(e) = std::fs::create_dir_all("tmp") {
-        return Err(format!("failed to create directory 'tmp': {}", e));
-    }
+    std::fs::set_permissions(socket_path.to_string(), socket_permissions)
+        .map_err(|e| e.to_string())?;
+
+    std::fs::create_dir_all("uploads")
+        .map_err(|e| e.to_string())?;
+
+    std::fs::create_dir_all("tmp")
+        .map_err(|e| e.to_string())?;
+
     Ok(listener)
 }
 

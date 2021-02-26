@@ -6,14 +6,17 @@
 
 rustPlatform.buildRustPackage rec {
   pname = "urlnao";
-  version = "0.2.0";
+  version = "0.3.0";
 
-  src = fetchFromGitHub {
-    owner = "WilliButz";
-    repo = pname;
-    rev = "v${version}";
-    sha256 = "023spdwp1fywfldgg4mm1cjy60yhqdgnvmpykr0myzy7vgw7ll7b";
-  };
+  src = nix-gitignore.gitignoreSource [ "*.nix" ] ../.;
+
+  # /* alternatively use fetchFromGitHub */
+  # src = fetchFromGitHub {
+  #   owner = "WilliButz";
+  #   repo = pname;
+  #   rev = "v${version}";
+  #   sha256 = "023spdwp1fywfldgg4mm1cjy60yhqdgnvmpykr0myzy7vgw7ll7b";
+  # };
 
   cargoSha256 = "1nfa9ymq7m0qyyvgz2ch1366c8qsp2dd7smmc4rdw5r8iann836p";
 
